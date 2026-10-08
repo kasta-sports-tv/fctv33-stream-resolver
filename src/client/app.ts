@@ -46,8 +46,6 @@ const el = {
   error: document.getElementById("error-message")!,
   direct: document.getElementById("export-direct-url") as HTMLInputElement,
   proxied: document.getElementById("export-proxied-url") as HTMLInputElement,
-  vlc: document.getElementById("export-vlc-url") as HTMLInputElement,
-  mpv: document.getElementById("export-mpv-url") as HTMLInputElement,
   timing: document.getElementById("timing-panel")!,
   resolveMs: document.getElementById("timing-resolve")!,
   playMs: document.getElementById("timing-play")!,
@@ -69,7 +67,6 @@ const state = {
 };
 
 const formatMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`);
-const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 const showError = (message: string) => {
   el.error.textContent = message;
@@ -87,7 +84,7 @@ const setIdle = () => {
   el.exports.hidden = true;
   el.title.textContent = "Select a Match";
   el.timing.hidden = true;
-  el.direct.value = el.proxied.value = el.vlc.value = el.mpv.value = "";
+  el.direct.value = el.proxied.value = "";
 };
 
 const setPlaying = () => {
@@ -196,12 +193,8 @@ const startPlayback = (url: string, timing: NonNullable<typeof state.timer>) => 
 };
 
 const bindExports = (result: ResolveResult) => {
-  const streamUrl = result.streamUrl ?? "";
-  const referer = result.referer ?? "";
-  el.direct.value = streamUrl;
+  el.direct.value = result.streamUrl ?? "";
   el.proxied.value = result.playableUrl ?? "";
-  el.vlc.value = streamUrl && referer ? `vlc --http-referrer ${quote(referer)} ${quote(streamUrl)}` : "";
-  el.mpv.value = streamUrl && referer ? `mpv --referrer=${quote(referer)} ${quote(streamUrl)}` : "";
 };
 
 const renderSports = () => {
