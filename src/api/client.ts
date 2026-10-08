@@ -82,6 +82,24 @@ export class ApiClient {
     return this.playerReferer;
   }
 
+  async resolveCslConfig(): Promise<{
+    salt: string;
+    maxRetryTimes: number;
+    minFetchTimeout: number;
+  }> {
+    const config = await this.loadSiteConfig();
+    const raw = JSON.parse(config["common:cdnSmartLink"] ?? "{}") as {
+      auth?: { salt?: string };
+      maxRetryTimes?: number;
+      minFetchTimeout?: number;
+    };
+    return {
+      salt: raw.auth?.salt ?? "00",
+      maxRetryTimes: raw.maxRetryTimes ?? 2,
+      minFetchTimeout: raw.minFetchTimeout ?? 3.2,
+    };
+  }
+
   async fetchUserGeo(): Promise<UserGeo> {
     await this.bootstrap();
     return parseUserGeo(Buffer.from(await this.get(PATH.userInfo)));
