@@ -1,8 +1,8 @@
 # FCTV33 Stream Resolver
 
-Self-hosted **Node.js** **HLS stream resolver** and **m3u8 proxy** for live FCTV33 sports. Open a local web console, browse live matches by sport, resolve a game to a tokenized CDN playlist through a small **REST API**, and play instantly in the browser — or copy Direct, Proxied, **VLC**, and **mpv** links from the same response.
+Self-hosted **Node.js** **HLS stream resolver** and **m3u8 proxy** for live FCTV33 sports. Open a local web console, browse live matches by sport, resolve a game to a tokenized CDN playlist through a small **REST API**, and play instantly in the browser — or copy Direct and Proxied links from the same response.
 
-The server talks to the upstream data API with signed protobuf requests, decodes ROT47 stream payloads, builds an AES-256-CBC session token URL, then relays HLS manifests and MPEG-TS segments with the player **Referer** headers the CDN expects. There are no npm runtime dependencies: TypeScript compiles to plain Node, and playback uses remote [hls.js](https://github.com/video-dev/hls.js).
+The server talks to the upstream data API with signed protobuf requests, decodes ROT47 stream payloads, builds an AES-256-CBC session token URL, then relays HLS manifests and MPEG-TS segments with the player **Referer** headers the CDN expects. When playlists use CDN Smart Link (CSL) placeholder segment URLs, the proxy decodes them (ROT13 + base64), signs CTU hosts, and fetches real MPEG-TS instead of the raw CDN placeholders. There are no npm runtime dependencies: TypeScript compiles to plain Node, and playback uses remote [hls.js](https://github.com/video-dev/hls.js).
 
 ## Table of Contents
 
@@ -21,7 +21,6 @@ The server talks to the upstream data API with signed protobuf requests, decodes
   - [Browser Player](#browser-player)
   - [Proxied Playlist](#proxied-playlist)
   - [Direct CDN with Referer](#direct-cdn-with-referer)
-  - [VLC and mpv](#vlc-and-mpv)
 - [Sport Types](#sport-types)
 - [Stack and Scripts](#stack-and-scripts)
 - [Configuration](#configuration)
@@ -65,13 +64,13 @@ PORT=8080 npm start
 
 ## Why This Exists
 
-Live FCTV33 playback is not a single public `.m3u8` link on the page. The site bootstraps a data API host, signs protobuf calls, returns an obfuscated stream URL, and expects the iframe player origin as **Referer** / **Origin** on CDN playlist and segment requests. Browsers cannot set those headers on cross-origin media fetches, so a bare CDN URL often fails with **403** inside `<video>` or hls.js.
+Live FCTV33 playback is not a single public `.m3u8` link on the page. The site bootstraps a data API host, signs protobuf calls, returns an obfuscated stream URL, and expects the iframe player origin as **Referer** / **Origin** on CDN playlist and segment requests. Browsers cannot set those headers on cross-origin media fetches, so a bare CDN URL often fails inside `<video>` or hls.js. Many live playlists also use CDN Smart Link placeholders: the `.m3u8` lists CDN segment URLs that return **487** unless the player (or this proxy) rewrites them to signed CTU hosts from `_ctump` / `_ctuph`.
 
 This project turns that chain into three local endpoints:
 
 1. **Live list** — matches that currently have streams, filtered by sport.
-2. **Resolve** — match id → tokenized `streamUrl`, player `referer`, and a localhost `playableUrl`.
-3. **HLS proxy** — fetches upstream with the correct headers and rewrites every playlist URI so segments keep flowing through the same proxy.
+2. **Resolve** — match id → tokenized `streamUrl`, player `referer`, CSL salt/geo context, and a localhost `playableUrl`.
+3. **HLS proxy** — fetches upstream with the correct headers, resolves CSL segments to CTU when needed, and rewrites every playlist URI so media keeps flowing through the same proxy.
 
 The result is a self-hosted stream resolver you can drive from the UI or from scripts, without pasting match page URLs or manually injecting headers.
 
@@ -80,10 +79,11 @@ The result is a self-hosted stream resolver you can drive from the UI or from sc
 - Live match rail with sport filters (Football, Basketball, Tennis, Cricket, and more)
 - One-click resolve into a playable HLS session with on-screen timing
 - Built-in **hls.js** player with autoplay after manifest parse
-- Copyable **Direct** CDN URL, **Proxied** localhost URL, and ready-made **VLC** / **mpv** command lines
+- Copyable **Direct** CDN URL and **Proxied** localhost URL
 - Signed upstream access: MD5 request-hash prefix, body signature keys, protobuf envelopes
 - Stream URL construction with ROT47 decode and AES-256-CBC session token wrapping
 - Minimal **m3u8** proxy: header injection, playlist rewrite, MPEG-TS passthrough, open CORS
+- CDN Smart Link support: ROT13/base64 decode, geo-ordered CTU hosts, `_s2` MD5 signing
 - Pure TypeScript sources (`src/` → `dist/`), zero runtime npm packages
 - Equal-height match list and player stage on desktop; list scrolls inside the rail
 
@@ -98,7 +98,8 @@ End-to-end path for a single match (same order as `src/handlers/match.ts` and `s
 5. **Live or detail** — signed `GET` under `/sfver{md5-prefix}{suffix}/api/match/…` with ordered query params (`matchId`, `sportType`, `language`, `stream`).
 6. **Stream detail** — `/api/stream/detail` returns an obfuscated URL plus the `rb-session` response header.
 7. **Token URL** — ROT47 decode, strip the leading marker, AES-encrypt the session, and assemble `https://…/token-…/….m3u8`.
-8. **Playable link** — `{origin}/api/hls?url=…&referer=…` so the browser never talks to the CDN directly.
+8. **CSL config** — site params `common:cdnSmartLink` supply salt, retry, and timeout values used when proxying Smart Link segments.
+9. **Playable link** — `{origin}/api/hls?url=…&referer=…` plus geo and CSL query params so the browser never talks to the CDN directly; the proxy handles CTU segment fetches.
 
 ## Architecture
 
@@ -109,17 +110,17 @@ End-to-end path for a single match (same order as `src/handlers/match.ts` and `s
 └─────────────────┘     │                  │     └─────────────────────┘
                         │  /api/live       │                │
                         │  /api/resolve    │                ▼
-                        │  /api/hls  ──────┼──────▶  CDN m3u8 + .ts
-                        └──────────────────┘         (with player referer)
+                        │  /api/hls  ──────┼──────▶  CDN m3u8 + CTU .ts
+                        └──────────────────┘         (referer + CSL when needed)
 ```
 
 | Layer | Responsibility |
 | --- | --- |
 | `server/` | Node `http` server, router, static client assets |
 | `handlers/` | JSON handlers for live list and match resolve |
-| `api/` | Bootstrap, signed client, protobuf field parsers |
-| `crypto/` | Param sort + MD5 prefix, ROT47, AES stream token |
-| `proxy/` | Upstream fetch, playlist rewrite, segment relay |
+| `api/` | Bootstrap, signed client, protobuf field parsers, CSL config |
+| `crypto/` | Param sort + MD5 prefix, ROT47, ROT13, AES stream token |
+| `proxy/` | Upstream fetch, CSL→CTU segment resolve, playlist rewrite |
 | `client/` | Live sports UI, player, export fields |
 | `config/` | Entry origin, path constants, signature codes, user-agent |
 
@@ -151,7 +152,7 @@ On wide screens the rail height matches the player + exports block so the video 
 2. A click calls `/api/resolve?matchId=…&sportType=…`.
 3. Timing starts immediately; resolve time freezes when JSON returns; first-frame time freezes when `<video>` fires `playing`.
 4. The player attaches hls.js to `playableUrl` (or native HLS on Safari when supported).
-5. Export inputs fill with Direct, Proxied, VLC, and mpv strings; each has a Copy button.
+5. Export inputs fill with Direct and Proxied URLs; each has a Copy button.
 
 If the live list or resolve fails, an error banner appears above the workspace and the status chip switches to a failed state.
 
@@ -165,7 +166,7 @@ Base URL defaults to `http://localhost:3000`. All resolve and live responses are
 | --- | --- | --- | --- |
 | `GET` | `/api/live` | `sportType` | `{ sportType, matches }` |
 | `GET` | `/api/resolve` | `matchId`, `sportType` | stream object (below) |
-| `GET` | `/api/hls` | `url`, `referer` | m3u8 text or MPEG-TS bytes |
+| `GET` | `/api/hls` | `url`, `referer`, optional CSL/geo | m3u8 text or MPEG-TS bytes |
 
 Unknown `/api/*` paths return `{ "error": "not found" }` with status `404`. Upstream failures on live/resolve use status `502` with an `error` string. Validation errors use `400`.
 
@@ -211,7 +212,7 @@ curl -s "http://localhost:3000/api/resolve?matchId=4331876&sportType=1"
   "sportType": 1,
   "streamUrl": "https://cdn.example/token-…/index.m3u8",
   "referer": "https://player.example/",
-  "playableUrl": "http://localhost:3000/api/hls?url=…&referer=…"
+  "playableUrl": "http://localhost:3000/api/hls?url=…&referer=…&country=…&continent=…&salt=…&maxRetryTimes=…&minFetchTimeout=…"
 }
 ```
 
@@ -220,9 +221,9 @@ curl -s "http://localhost:3000/api/resolve?matchId=4331876&sportType=1"
 | `name` | Label from the selected stream item |
 | `matchId` | Echo of the request (numeric string) |
 | `sportType` | Echo of the request |
-| `streamUrl` | Tokenized CDN **m3u8**; needs the player referer on CDN requests |
+| `streamUrl` | Tokenized CDN **m3u8** (Direct). Playlist may list CSL placeholder segments that are not playable as raw CDN `.ts` |
 | `referer` | Iframe player origin used as `Referer` / `Origin` |
-| `playableUrl` | Local proxy URL safe for browser players and clients that cannot set headers |
+| `playableUrl` | Local proxy URL (Proxied) with referer, geo, and CSL params for browser playback |
 
 | Query | Required | Notes |
 | --- | --- | --- |
@@ -231,7 +232,7 @@ curl -s "http://localhost:3000/api/resolve?matchId=4331876&sportType=1"
 
 ### Proxy HLS
 
-Fetches an upstream playlist or segment with the player referer, then either rewrites the manifest or returns segment bytes.
+Fetches an upstream playlist or segment with the player referer, then either rewrites the manifest or returns segment bytes. Resolve builds `playableUrl` with the optional params; the UI uses that URL as-is.
 
 ```bash
 curl -s "http://localhost:3000/api/hls?url=<encoded-m3u8-or-ts>&referer=<player-origin>/"
@@ -239,13 +240,19 @@ curl -s "http://localhost:3000/api/hls?url=<encoded-m3u8-or-ts>&referer=<player-
 
 | Query | Required | Notes |
 | --- | --- | --- |
-| `url` | yes | Absolute upstream playlist or `.ts` URL |
+| `url` | yes | Absolute upstream playlist or segment URL |
 | `referer` | yes | Same player origin returned by resolve (include trailing `/` as returned) |
+| `country` | no | Geo hint for CTU host order (from resolve) |
+| `continent` | no | Geo hint for CTU host order (from resolve) |
+| `salt` | no | CSL `_s2` signing salt from `common:cdnSmartLink` |
+| `maxRetryTimes` | no | CSL CTU retry budget |
+| `minFetchTimeout` | no | CSL per-host timeout floor (seconds) |
 
 Behavior:
 
 - Detects playlists via `#EXTM3U` in the body or `.m3u8` in the URL.
-- Rewrites non-comment URI lines to absolute URLs that point back at `/api/hls` with the same referer.
+- Rewrites non-comment URI lines to absolute URLs that point back at `/api/hls` with the same proxy context.
+- When a segment URL carries CSL params (`_ctump`, …), decodes the CTU list, signs hosts with `_s2`, and fetches MPEG-TS from CTU (raw CDN placeholders typically return **487**).
 - Serves playlists as `application/vnd.apple.mpegurl` and segments as `video/mp2t`.
 - Sets `Cache-Control: no-store` and `Access-Control-Allow-Origin: *`.
 - On upstream failure returns plain-text status `502`.
@@ -262,18 +269,7 @@ Use `playableUrl` whenever the client cannot attach custom HTTP headers (most br
 
 ### Direct CDN with Referer
 
-`streamUrl` is the real tokenized playlist on the CDN. It works in players that can send headers — for example VLC and mpv — when paired with the returned `referer`. Opening `streamUrl` alone in a normal browser tab usually fails.
-
-### VLC and mpv
-
-After a successful resolve, the UI fills:
-
-```bash
-vlc --http-referrer '<referer>' '<streamUrl>'
-mpv --referrer='<referer>' '<streamUrl>'
-```
-
-Copy either line and run it on a machine with VLC or mpv installed. Prefer `playableUrl` if you want a single URL without referer flags.
+`streamUrl` is the tokenized CDN playlist. Opening it alone in a normal browser tab usually fails. Even with `referer`, CSL streams often cannot play Direct: playlist fetch may succeed while segment URLs stay as CDN placeholders (**487**). Prefer `playableUrl` for reliable playback.
 
 ## Sport Types
 
@@ -326,16 +322,18 @@ Entry origin, API paths, signature codes, and user-agent live in `src/config/sit
 src/
   api/
     bootstrap.ts    # entry HTML → digit + apis-data base URL
-    client.ts       # signed live/detail/stream client
+    client.ts       # signed live/detail/stream client + CSL config
     protobuf.ts     # envelope, live list, match/stream detail parsers
   crypto/
     request-hash.ts # param order + MD5 prefix for /sfver…
+    rot13.ts        # ROT13 helper for CSL params
     rot47.ts        # ROT47 helper
     stream-token.ts # AES tokenized CDN URL
   handlers/
     live.ts         # GET /api/live
     match.ts        # GET /api/resolve
   proxy/
+    csl.ts          # CDN Smart Link decode, CTU sign, segment fetch
     hls.ts          # GET /api/hls
   server/
     main.ts         # http.createServer
@@ -355,8 +353,8 @@ src/
 | --- | --- |
 | Live list empty | No streams for that sport at the moment; try another tab or Refresh |
 | Resolve `502` | Upstream signature, geo, or stream detail failure — check the JSON `error` string |
-| Browser plays black / errors | Prefer `playableUrl`; Direct CDN URLs need referer the browser cannot set |
-| VLC/mpv fail on Direct | Confirm the copied `--http-referrer` / `--referrer` matches resolve `referer` |
+| Browser plays black / errors | Prefer `playableUrl`; Direct CDN often needs referer the browser cannot set |
+| Segments fail with **487** | CSL placeholders on the CDN; use `playableUrl` so the proxy fetches signed CTU |
 | Port already in use | `npm start` tries to free `PORT`; otherwise set `PORT=8080` |
 | Bootstrap errors | Entry page HTML shape changed; bootstrap regex in `api/bootstrap.ts` may need an update |
 
