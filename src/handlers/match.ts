@@ -1,6 +1,6 @@
 import { ApiClient } from "../api/client.js";
 import { buildSignedStreamUrl } from "../crypto/stream-token.js";
-import { buildProxyUrl } from "../proxy/hls.js";
+import { buildProxyUrl, type ProxyContext } from "../proxy/hls.js";
 
 export async function resolveMatch(
   matchIdRaw: string | null,
@@ -17,10 +17,11 @@ export async function resolveMatch(
   }
   try {
     const client = new ApiClient();
-    const [geo, match, playerReferer] = await Promise.all([
+    const [geo, match, playerReferer, csl] = await Promise.all([
       client.fetchUserGeo(),
       client.fetchMatchDetail(matchId, sportType),
       client.resolvePlayerReferer(),
+      client.resolveCslConfig(),
     ]);
     const stream = match.stream.find((item) => item.streamId);
     if (!stream?.streamId) throw new Error("no stream on match");
@@ -35,13 +36,21 @@ export async function resolveMatch(
     });
     if (!detail.stream.url) throw new Error("stream detail missing url");
     const streamUrl = buildSignedStreamUrl(detail.stream.url, detail.sessionToken);
+    const proxyContext: ProxyContext = {
+      referer: playerReferer,
+      ...(geo.country ? { country: geo.country } : {}),
+      ...(geo.continent ? { continent: geo.continent } : {}),
+      salt: csl.salt,
+      maxRetryTimes: String(csl.maxRetryTimes),
+      minFetchTimeout: String(csl.minFetchTimeout),
+    };
     return Response.json({
       name: stream.name ?? "",
       matchId,
       sportType,
       streamUrl,
       referer: playerReferer,
-      playableUrl: buildProxyUrl(streamUrl, playerReferer, origin),
+      playableUrl: buildProxyUrl(streamUrl, proxyContext, origin),
     });
   } catch (error) {
     return Response.json(
