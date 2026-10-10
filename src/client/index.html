@@ -1,87 +1,123 @@
 <!doctype html>
-<html lang="en">
+<html lang="uk">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="FCTV33 live matches — resolve and play instantly.">
-  <title>FCTV33 Live</title>
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="description" content="FCTV33 — спортивні трансляції наживо.">
+  <title>FCTV33 — Спорт наживо</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="topbar__brand">
-        <span class="topbar__logo">FCTV33</span>
-        <span class="topbar__tag">Live</span>
-      </div>
-      <div class="topbar__aside">
+      <a class="brand" href="/" aria-label="FCTV33 — головна">
+        <span class="brand__mark">F</span>
+        <span class="brand__name">FCTV<span>33</span></span>
+        <span class="brand__divider"></span>
+        <span class="brand__subtitle">SPORTS</span>
+      </a>
+
+      <div class="topbar__right">
         <div class="status" aria-live="polite">
           <span class="status__dot" aria-hidden="true"></span>
-          <span id="live-meta" class="status__text">—</span>
+          <span id="live-meta" class="status__text">Підключення…</span>
         </div>
-        <button type="button" id="refresh-button" class="btn">Refresh</button>
+
+        <button type="button" id="refresh-button" class="refresh-btn" aria-label="Оновити матчі" title="Оновити матчі">
+          <span class="refresh-btn__icon">↻</span>
+          <span class="refresh-btn__label">Оновити</span>
+        </button>
       </div>
     </header>
 
-    <nav id="sport-tabs" class="sports" role="tablist" aria-label="Sport"></nav>
-    <p id="error-message" class="banner" hidden></p>
+    <section class="welcome">
+      <div class="welcome__content">
+        <div class="eyebrow"><span class="eyebrow__dot"></span> СПОРТИВНИЙ ЦЕНТР</div>
+        <h1>Спорт <span>наживо.</span></h1>
+        <p>Обирай матч і дивись трансляцію в одному місці.</p>
+      </div>
+      <div class="welcome__graphic" aria-hidden="true">
+        <div class="graphic__ring graphic__ring--one"></div>
+        <div class="graphic__ring graphic__ring--two"></div>
+        <div class="graphic__ball">F</div>
+      </div>
+    </section>
 
-    <div class="workspace">
-      <aside class="rail" aria-label="Live matches">
-        <div class="rail__head">
-          <span class="rail__label">Matches</span>
+    <nav class="sports-wrap" aria-label="Види спорту">
+      <div class="section-caption">ВИДИ СПОРТУ</div>
+      <div id="sport-tabs" class="sports" role="tablist"></div>
+    </nav>
+
+    <p id="error-message" class="banner" role="alert" hidden></p>
+
+    <main class="workspace">
+      <section class="stage" aria-label="Відеоплеєр">
+        <div class="section-heading">
+          <div>
+            <div class="section-caption">ЗАРАЗ НА ЕКРАНІ</div>
+            <h2 id="stream-title">Оберіть матч</h2>
+          </div>
+          <span class="live-badge"><span></span> LIVE</span>
         </div>
-        <ul id="match-list" class="matches"></ul>
-      </aside>
 
-      <section class="stage" aria-label="Player">
-        <div class="stage__bar">
-          <h1 id="stream-title" class="stage__title">Select a Match</h1>
-          <ul id="timing-panel" class="timing" hidden>
-            <li class="timing__item">
-              <span class="timing__k">Resolve</span>
-              <span id="timing-resolve" class="timing__v">—</span>
-            </li>
-            <li class="timing__item">
-              <span class="timing__k">First Frame</span>
-              <span id="timing-play" class="timing__v">—</span>
-            </li>
-          </ul>
-        </div>
-
-        <div class="stage__body">
+        <div class="player-card">
           <div class="screen">
             <div class="screen__idle">
-              <p class="screen__idle-brand">FCTV33</p>
-              <p class="screen__idle-copy">Pick a live match to resolve and play.</p>
+              <div class="idle__logo">FCTV<span>33</span></div>
+              <div class="idle__play">▶</div>
+              <p class="idle__title">Твій спорт — твій вибір</p>
+              <p class="idle__copy">Оберіть матч зі списку, щоб почати перегляд.</p>
             </div>
             <video id="video-element" class="screen__video" controls playsinline autoplay hidden></video>
           </div>
-
-          <div id="exports" class="exports" hidden>
-            <div class="export">
-              <span class="export__k">Direct</span>
-              <div class="export__row">
-                <input id="export-direct-url" readonly>
-                <button type="button" class="btn btn--soft" data-copy="export-direct-url">Copy</button>
-              </div>
+          <div class="player-footer">
+            <div class="player-footer__icon">▶</div>
+            <div>
+              <div class="player-footer__title">FCTV33 Sports</div>
+              <div class="player-footer__subtitle">Прямі спортивні трансляції</div>
             </div>
-            <div class="export">
-              <span class="export__k">Proxied</span>
-              <div class="export__row">
-                <input id="export-proxied-url" readonly>
-                <button type="button" class="btn btn--soft" data-copy="export-proxied-url">Copy</button>
-              </div>
-            </div>
+            <div class="player-footer__spacer"></div>
+            <div class="player-footer__live"><span></span> НАЖИВО</div>
           </div>
         </div>
       </section>
-    </div>
+
+      <aside class="rail" aria-label="Список матчів">
+        <div class="rail__head">
+          <div>
+            <div class="section-caption">ПРЯМІ ТРАНСЛЯЦІЇ</div>
+            <h2>Матчі <span id="match-count">0</span></h2>
+          </div>
+          <div class="rail__live"><span></span> LIVE</div>
+        </div>
+
+        <label class="search">
+          <span class="search__icon" aria-hidden="true">⌕</span>
+          <input id="match-search" type="search" placeholder="Пошук матчу…" autocomplete="off">
+        </label>
+
+        <ul id="match-list" class="matches"></ul>
+
+        <div class="rail__footer">
+          <span class="rail__footer-dot"></span>
+          Список оновлюється автоматично
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <span class="footer__brand">FCTV33 <span>SPORTS</span></span>
+      <span>Спортивні трансляції в одному місці</span>
+    </footer>
   </div>
+
   <script src="/app.js"></script>
 </body>
 </html>
