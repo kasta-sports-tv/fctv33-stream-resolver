@@ -1,4 +1,9 @@
-type LiveMatch = { matchId: number; sportType: number; name: string };
+type LiveMatch = {
+  matchId: number;
+  sportType: number;
+  name: string;
+};
+
 type ResolveResult = {
   name?: string;
   streamUrl?: string;
@@ -6,12 +11,14 @@ type ResolveResult = {
   referer?: string;
   error?: string;
 };
+
 type HlsPlayer = {
   destroy: () => void;
   loadSource: (url: string) => void;
   attachMedia: (media: HTMLMediaElement) => void;
   on: (event: string, callback: (...args: unknown[]) => void) => void;
 };
+
 type HlsApi = {
   isSupported: () => boolean;
   Events: { ERROR: string; MANIFEST_PARSED: string };
@@ -21,16 +28,16 @@ type HlsApi = {
 declare const Hls: HlsApi;
 
 const SPORTS = [
-  { type: 1, label: "Football" },
-  { type: 2, label: "Basketball" },
-  { type: 3, label: "Tennis" },
-  { type: 4, label: "Baseball" },
-  { type: 6, label: "Cricket" },
-  { type: 7, label: "Motorsport" },
-  { type: 8, label: "Rugby" },
-  { type: 9, label: "Am. Football" },
-  { type: 11, label: "Hockey" },
-  { type: 90, label: "Others" },
+  { type: 1, label: "Футбол", icon: "⚽" },
+  { type: 2, label: "Баскетбол", icon: "🏀" },
+  { type: 3, label: "Теніс", icon: "🎾" },
+  { type: 4, label: "Бейсбол", icon: "⚾" },
+  { type: 6, label: "Крикет", icon: "🏏" },
+  { type: 7, label: "Автоспорт", icon: "🏎️" },
+  { type: 8, label: "Регбі", icon: "🏉" },
+  { type: 9, label: "Амер. футбол", icon: "🏈" },
+  { type: 11, label: "Хокей", icon: "🏒" },
+  { type: 90, label: "Інше", icon: "🏆" },
 ] as const;
 
 const el = {
@@ -42,13 +49,8 @@ const el = {
   title: document.getElementById("stream-title")!,
   screen: document.querySelector(".screen") as HTMLElement,
   video: document.getElementById("video-element") as HTMLVideoElement,
-  exports: document.getElementById("exports")!,
   error: document.getElementById("error-message")!,
-  direct: document.getElementById("export-direct-url") as HTMLInputElement,
-  proxied: document.getElementById("export-proxied-url") as HTMLInputElement,
-  timing: document.getElementById("timing-panel")!,
-  resolveMs: document.getElementById("timing-resolve")!,
-  playMs: document.getElementById("timing-play")!,
+  search: document.getElementById("match-search") as HTMLInputElement,
 };
 
 const state = {
@@ -59,14 +61,8 @@ const state = {
   resolving: false,
   hls: null as HlsPlayer | null,
   gen: 0,
-  timer: null as null | {
-    frame: number;
-    markResolved: () => void;
-    markPlayed: () => void;
-  },
+  search: "",
 };
-
-const formatMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`);
 
 const showError = (message: string) => {
   el.error.textContent = message;
@@ -78,68 +74,6 @@ const clearError = () => {
   el.error.textContent = "";
 };
 
-const setIdle = () => {
-  el.screen.classList.remove("is-active");
-  el.video.hidden = true;
-  el.exports.hidden = true;
-  el.title.textContent = "Select a Match";
-  el.timing.hidden = true;
-  el.direct.value = el.proxied.value = "";
-};
-
-const setPlaying = () => {
-  el.screen.classList.add("is-active");
-  el.video.hidden = false;
-  el.exports.hidden = false;
-};
-
-const stopTiming = () => {
-  if (!state.timer) return;
-  cancelAnimationFrame(state.timer.frame);
-  state.timer = null;
-};
-
-const startTiming = () => {
-  stopTiming();
-  el.timing.hidden = false;
-  el.resolveMs.textContent = "0ms";
-  el.playMs.textContent = "waiting";
-  el.resolveMs.className = "timing__v is-live";
-  el.playMs.className = "timing__v";
-  const started = performance.now();
-  let resolvedAt: number | null = null;
-  let playedAt: number | null = null;
-  const tick = () => {
-    const now = performance.now();
-    if (resolvedAt == null) el.resolveMs.textContent = formatMs(now - started);
-    if (resolvedAt != null && playedAt == null) {
-      el.playMs.textContent = formatMs(now - resolvedAt);
-      el.playMs.className = "timing__v is-live";
-    }
-    if (playedAt == null && state.timer) state.timer.frame = requestAnimationFrame(tick);
-  };
-  state.timer = {
-    frame: requestAnimationFrame(tick),
-    markResolved() {
-      if (resolvedAt != null) return;
-      resolvedAt = performance.now();
-      el.resolveMs.textContent = formatMs(resolvedAt - started);
-      el.resolveMs.className = "timing__v is-done";
-      el.playMs.textContent = "0ms";
-      el.playMs.className = "timing__v is-live";
-    },
-    markPlayed() {
-      if (playedAt != null) return;
-      playedAt = performance.now();
-      if (resolvedAt == null) this.markResolved();
-      el.playMs.textContent = formatMs(playedAt - (resolvedAt as number));
-      el.playMs.className = "timing__v is-done";
-      stopTiming();
-    },
-  };
-  return state.timer;
-};
-
 const stopPlayback = () => {
   state.gen += 1;
   state.hls?.destroy();
@@ -147,54 +81,72 @@ const stopPlayback = () => {
   el.video.pause();
   el.video.removeAttribute("src");
   el.video.load();
+  el.screen.classList.remove("is-active");
+  el.video.hidden = true;
 };
 
-const startPlayback = (url: string, timing: NonNullable<typeof state.timer>) => {
+const startPlayback = (url: string) => {
   stopPlayback();
   const gen = state.gen;
   const current = () => gen === state.gen;
+
   return new Promise<void>((resolve, reject) => {
     let done = false;
+
     const finish = (ok: boolean, error?: Error) => {
       if (!current() || done) return;
       done = true;
       el.video.removeEventListener("playing", onPlaying);
       el.video.removeEventListener("error", onError);
+
       if (ok) {
         clearError();
-        timing.markPlayed();
         resolve();
-      } else reject(error ?? new Error("playback failed"));
+      } else {
+        reject(error ?? new Error("Не вдалося відтворити відео"));
+      }
     };
+
     const onPlaying = () => finish(true);
-    const onError = () => finish(false, new Error("playback failed"));
+    const onError = () =>
+      finish(false, new Error("Помилка відтворення відео"));
+
     el.video.addEventListener("playing", onPlaying);
     el.video.addEventListener("error", onError);
 
+    el.video.hidden = false;
+    el.screen.classList.add("is-active");
+
     if (Hls.isSupported()) {
-      state.hls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
-      state.hls.on(Hls.Events.ERROR, (_e, data) => {
-        if ((data as { fatal?: boolean } | undefined)?.fatal) finish(false, new Error("playback failed"));
+      state.hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 30,
       });
+
+      state.hls.on(Hls.Events.ERROR, (_event, data) => {
+        if ((data as { fatal?: boolean } | undefined)?.fatal) {
+          finish(false, new Error("Помилка потоку HLS"));
+        }
+      });
+
       state.hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (current()) void el.video.play().catch(() => undefined);
       });
+
       state.hls.attachMedia(el.video);
       state.hls.loadSource(url);
       return;
     }
+
     if (el.video.canPlayType("application/vnd.apple.mpegurl")) {
       el.video.src = url;
       void el.video.play().catch(() => undefined);
       return;
     }
-    finish(false, new Error("HLS not supported"));
-  });
-};
 
-const bindExports = (result: ResolveResult) => {
-  el.direct.value = result.streamUrl ?? "";
-  el.proxied.value = result.playableUrl ?? "";
+    finish(false, new Error("Цей браузер не підтримує HLS"));
+  });
 };
 
 const renderSports = () => {
@@ -202,66 +154,125 @@ const renderSports = () => {
     ...SPORTS.map((sport) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `sports__btn${sport.type === state.sportType ? " is-active" : ""}`;
-      button.textContent = sport.label;
+      button.className =
+        `sports__btn${sport.type === state.sportType ? " is-active" : ""}`;
+      button.innerHTML =
+        `<span class="sports__icon">${sport.icon}</span>` +
+        `<span>${sport.label}</span>`;
+
+      button.setAttribute(
+        "aria-pressed",
+        String(sport.type === state.sportType),
+      );
+
       button.onclick = () => {
         if (state.sportType === sport.type) return;
+
+        stopPlayback();
+        state.activeId = null;
         state.sportType = sport.type;
+        el.title.textContent = "Оберіть матч";
         renderSports();
         void loadMatches();
       };
+
       return button;
     }),
   );
 };
 
 const renderMatches = () => {
+  const filtered = state.matches.filter((match) =>
+    (match.name || `Матч ${match.matchId}`)
+      .toLocaleLowerCase("uk")
+      .includes(state.search.toLocaleLowerCase("uk")),
+  );
+
   el.matches.replaceChildren(
-    ...state.matches.map((match) => {
+    ...filtered.map((match) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `match${match.matchId === state.activeId ? " is-active" : ""}`;
+      button.className =
+        `match${match.matchId === state.activeId ? " is-active" : ""}`;
       button.disabled = state.resolving;
+
+      const live = document.createElement("span");
+      live.className = "match__live";
+      live.innerHTML = '<span class="match__live-dot"></span> LIVE';
+
       const title = document.createElement("span");
       title.className = "match__title";
-      title.textContent = match.name || `Match ${match.matchId}`;
+      title.textContent = match.name || `Матч ${match.matchId}`;
+
       const meta = document.createElement("span");
       meta.className = "match__meta";
-      meta.textContent = `#${match.matchId}`;
-      button.append(title, meta);
+      meta.textContent = "Доступна трансляція";
+
+      const text = document.createElement("span");
+      text.className = "match__text";
+      text.append(title, meta);
+
+      const arrow = document.createElement("span");
+      arrow.className = "match__arrow";
+      arrow.textContent = "›";
+
+      button.append(live, text, arrow);
       button.onclick = () => void playMatch(match);
       item.append(button);
+
       return item;
     }),
   );
-  if (!state.matches.length && !state.loading) {
+
+  if (!filtered.length && !state.loading) {
     const empty = document.createElement("li");
     empty.className = "matches__empty";
-    empty.textContent = "No live streams for this sport right now.";
+    empty.textContent = state.search
+      ? "За цим запитом матчів не знайдено."
+      : "Зараз немає доступних трансляцій у цій категорії.";
     el.matches.append(empty);
   }
+
+  const count = document.getElementById("match-count");
+  if (count) count.textContent = String(filtered.length);
 };
 
 const loadMatches = async () => {
   state.loading = true;
   el.refresh.disabled = true;
   el.status.className = "status is-loading";
-  el.liveMeta.textContent = "Loading…";
+  el.liveMeta.textContent = "Завантаження";
   clearError();
   renderMatches();
+
   try {
-    const response = await fetch(`/api/live?sportType=${state.sportType}`);
-    const result = (await response.json()) as { matches?: LiveMatch[]; error?: string };
-    if (!response.ok) throw new Error(result.error ?? `Request failed (${response.status})`);
+    const response = await fetch(
+      `/api/live?sportType=${encodeURIComponent(state.sportType)}`,
+    );
+
+    const result = (await response.json()) as {
+      matches?: LiveMatch[];
+      error?: string;
+    };
+
+    if (!response.ok) {
+      throw new Error(result.error ?? `Помилка запиту (${response.status})`);
+    }
+
     state.matches = result.matches ?? [];
     el.status.className = "status";
-    el.liveMeta.textContent = `${state.matches.length} live`;
+    el.liveMeta.textContent = "З’єднання активне";
+
+    const count = document.getElementById("match-count");
+    if (count) count.textContent = String(state.matches.length);
   } catch (error) {
     state.matches = [];
     el.status.className = "status is-error";
-    el.liveMeta.textContent = "Failed";
-    showError(error instanceof Error ? error.message : "Live list failed");
+    el.liveMeta.textContent = "Немає з’єднання";
+    showError(
+      error instanceof Error ? error.message : "Не вдалося завантажити матчі",
+    );
   } finally {
     state.loading = false;
     el.refresh.disabled = false;
@@ -271,55 +282,56 @@ const loadMatches = async () => {
 
 const playMatch = async (match: LiveMatch) => {
   if (state.resolving) return;
+
   state.resolving = true;
   state.activeId = match.matchId;
   clearError();
   stopPlayback();
-  stopTiming();
-  setIdle();
-  el.title.textContent = match.name || `Match ${match.matchId}`;
+
+  el.title.textContent = match.name || `Матч ${match.matchId}`;
+  el.video.hidden = true;
   renderMatches();
-  const timing = startTiming();
+
   try {
     const response = await fetch(
-      `/api/resolve?matchId=${encodeURIComponent(match.matchId)}&sportType=${encodeURIComponent(match.sportType)}`,
+      `/api/resolve?matchId=${encodeURIComponent(match.matchId)}` +
+      `&sportType=${encodeURIComponent(match.sportType)}`,
     );
+
     const result = (await response.json()) as ResolveResult;
-    if (!response.ok) throw new Error(result.error ?? `Request failed (${response.status})`);
-    el.title.textContent = result.name || match.name || "Stream";
-    bindExports(result);
-    setPlaying();
-    timing.markResolved();
-    if (!result.playableUrl) throw new Error("missing playable url");
-    await startPlayback(result.playableUrl, timing);
+
+    if (!response.ok) {
+      throw new Error(result.error ?? `Помилка запиту (${response.status})`);
+    }
+
+    el.title.textContent = result.name || match.name || "Трансляція";
+
+    if (!result.playableUrl) {
+      throw new Error(result.error || "Посилання для відтворення не отримано");
+    }
+
+    await startPlayback(result.playableUrl);
   } catch (error) {
-    stopTiming();
-    el.timing.hidden = true;
-    setIdle();
-    el.title.textContent = match.name || "Select a Match";
-    showError(error instanceof Error ? error.message : "Resolve failed");
+    stopPlayback();
+    showError(
+      error instanceof Error ? error.message : "Не вдалося запустити трансляцію",
+    );
   } finally {
     state.resolving = false;
     renderMatches();
   }
 };
 
-document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((button) => {
-  button.onclick = async () => {
-    const field = document.getElementById(button.dataset.copy ?? "") as HTMLInputElement | null;
-    if (!field?.value) return;
-    await navigator.clipboard.writeText(field.value);
-    const label = button.textContent;
-    button.textContent = "Copied";
-    button.classList.add("ok");
-    setTimeout(() => {
-      button.textContent = label;
-      button.classList.remove("ok");
-    }, 1100);
-  };
+el.refresh.onclick = () => void loadMatches();
+
+el.search.addEventListener("input", () => {
+  state.search = el.search.value.trim();
+  renderMatches();
 });
 
-el.refresh.onclick = () => void loadMatches();
-setIdle();
+setInterval(() => {
+  if (!state.loading && !state.resolving) void loadMatches();
+}, 120_000);
+
 renderSports();
 void loadMatches();
