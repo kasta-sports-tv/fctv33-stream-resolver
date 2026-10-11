@@ -16,13 +16,22 @@ export const SIGNATURE = {
   detail: 0x66,
 } as const;
 
-export const SIGNATURE_CODES = [0x64, 0x65, 0x66, 0x67, 0x68, 0x69] as const;
+export const SIGNATURE_CODES = [
+  0x64,
+  0x65,
+  0x66,
+  0x67,
+  0x68,
+  0x69,
+] as const;
 
 export const REQUEST_PARAM_ORDER = [
   "matchId",
   "sportType",
   "language",
   "stream",
+  "matchDateStart",
+  "matchDateEnd",
 ] as const;
 
 export const USER_AGENT =
