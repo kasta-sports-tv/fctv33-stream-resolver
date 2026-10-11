@@ -12,8 +12,7 @@ export async function listScheduledMatches(
     return Response.json({ error: "invalid sportType" }, { status: 400 });
   }
 
-  const now = new Date();
-  const tomorrow = new Date(now);
+  const tomorrow = new Date();
   tomorrow.setHours(0, 0, 0, 0);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -38,24 +37,23 @@ export async function listScheduledMatches(
       matchDateEnd,
     );
 
-    const envelope = parseApiEnvelope(Buffer.from(data));
+    const buffer = Buffer.from(data);
+    const envelope = parseApiEnvelope(buffer);
 
     return Response.json({
       sportType,
       matchDateStart,
       matchDateEnd,
+      byteLength: buffer.length,
+      firstBytesHex: buffer.subarray(0, 160).toString("hex"),
+      firstBytesText: buffer.subarray(0, 300).toString("utf8"),
       message: envelope.message,
       payloadCount: envelope.payload.length,
-      payloadSizes: envelope.payload.map((item) => item.length),
-      payloadPreview: envelope.payload.map((item) =>
-        item.subarray(0, 80).toString("hex"),
-      ),
     });
   } catch (error) {
     return Response.json(
       {
-        error:
-          error instanceof Error ? error.message : "schedule request failed",
+        error: error instanceof Error ? error.message : "schedule request failed",
       },
       { status: 502 },
     );
