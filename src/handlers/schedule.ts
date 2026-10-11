@@ -12,15 +12,15 @@ export async function listScheduledMatches(
     return Response.json({ error: "invalid sportType" }, { status: 400 });
   }
 
-  const tomorrow = new Date();
-  tomorrow.setHours(0, 0, 0, 0);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
 
-  const defaultEnd = new Date(tomorrow);
-  defaultEnd.setDate(defaultEnd.getDate() + 3);
-
-  const matchDateStart = Number(startRaw ?? tomorrow.getTime());
-  const matchDateEnd = Number(endRaw ?? defaultEnd.getTime());
+  const matchDateStart = Number(
+    startRaw ?? startOfToday.getTime() + 24 * 60 * 60 * 1000,
+  );
+  const matchDateEnd = Number(
+    endRaw ?? startOfToday.getTime() + 3 * 24 * 60 * 60 * 1000,
+  );
 
   if (
     !Number.isFinite(matchDateStart) ||
@@ -45,8 +45,6 @@ export async function listScheduledMatches(
       matchDateStart,
       matchDateEnd,
       byteLength: buffer.length,
-      firstBytesHex: buffer.subarray(0, 160).toString("hex"),
-      firstBytesText: buffer.subarray(0, 300).toString("utf8"),
       message: envelope.message,
       payloadCount: envelope.payload.length,
     });
