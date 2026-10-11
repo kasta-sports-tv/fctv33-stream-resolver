@@ -55,9 +55,11 @@ export class ApiClient {
   private async loadSiteConfig(): Promise<Record<string, string>> {
     await this.bootstrap();
     if (this.siteConfig) return this.siteConfig;
+
     const response = await fetch(`${this.baseUrl()}${PATH.params}`, {
       headers: headers(this.req()),
     });
+
     this.siteConfig = JSON.parse(rot47(await response.text())) as Record<string, string>;
     return this.siteConfig;
   }
@@ -269,6 +271,15 @@ export class ApiClient {
 
     const url = `${this.baseUrl()}/sfver${requestHashPrefix(params)}${suffix}${path}?${query}`;
 
-    return (await fetch(url, { headers: headers(this.req()) })).arrayBuffer();
+    const response = await fetch(url, { headers: headers(this.req()) });
+    const buffer = await response.arrayBuffer();
+
+    if (!response.ok || buffer.byteLength === 0) {
+      throw new Error(
+        `FCTV33 request failed: path=${path}, HTTP=${response.status}, bytes=${buffer.byteLength}`,
+      );
+    }
+
+    return buffer;
   }
 }
