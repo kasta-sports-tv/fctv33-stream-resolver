@@ -128,7 +128,10 @@ export class ApiClient {
   async fetchLiveMatches(sportType: number): Promise<LiveMatch[]> {
     await this.loadSignatures(0, sportType);
     const params: RequestParams = { language: 0, sportType, stream: true };
-    return parseLiveMatchList(Buffer.from(await this.signedGet(PATH.live, params, SIGNATURE.live)));
+    const raw = Buffer.from(await this.signedGet(PATH.live, params, SIGNATURE.live));
+console.log("FCTV33 LIVE API bytes:", raw.length);
+console.log("FCTV33 LIVE API hex:", raw.subarray(0, 120).toString("hex"));
+return parseLiveMatchList(raw);
   }
 
   async fetchMatchDetail(matchId: string, sportType: number): Promise<{ stream: StreamItem[] }> {
