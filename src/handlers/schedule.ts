@@ -16,7 +16,7 @@ export async function listScheduledMatches(
   startOfToday.setHours(0, 0, 0, 0);
 
   const matchDateStart = Number(
-    startRaw ?? startOfToday.getTime() + 24 * 60 * 60 * 1000,
+    startRaw ?? startOfToday.getTime(),
   );
   const matchDateEnd = Number(
     endRaw ?? startOfToday.getTime() + 3 * 24 * 60 * 60 * 1000,
