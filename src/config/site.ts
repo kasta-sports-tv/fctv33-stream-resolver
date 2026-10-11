@@ -26,12 +26,12 @@ export const SIGNATURE_CODES = [
 ] as const;
 
 export const REQUEST_PARAM_ORDER = [
+  "matchDateStart",
+  "matchDateEnd",
   "matchId",
   "sportType",
   "language",
   "stream",
-  "matchDateStart",
-  "matchDateEnd",
 ] as const;
 
 export const USER_AGENT =
