@@ -1,4 +1,5 @@
 import { ApiClient } from "../api/client.js";
+import { parseApiEnvelope } from "../api/protobuf.js";
 
 export async function listScheduledMatches(
   sportTypeRaw: string | null,
@@ -37,11 +38,18 @@ export async function listScheduledMatches(
       matchDateEnd,
     );
 
-    return new Response(data, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Cache-Control": "no-store",
-      },
+    const envelope = parseApiEnvelope(Buffer.from(data));
+
+    return Response.json({
+      sportType,
+      matchDateStart,
+      matchDateEnd,
+      message: envelope.message,
+      payloadCount: envelope.payload.length,
+      payloadSizes: envelope.payload.map((item) => item.length),
+      payloadPreview: envelope.payload.map((item) =>
+        item.subarray(0, 80).toString("hex"),
+      ),
     });
   } catch (error) {
     return Response.json(
